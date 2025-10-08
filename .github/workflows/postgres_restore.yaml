@@ -65,12 +65,15 @@ jobs:
         
         # Downloading Non-Prod Data Dumps
         echo "Downloading Non-Prod dumps..."
+        mkdir -p db_dumps/prod
+
         az storage blob download-batch \
-          -d  . \
-          --pattern "*.dump" \
-          -s $CONTAINER \
-          --account-name $AZURE_STORAGE_ACCOUNT 
-          --account-key $AZURE_STORAGE_KEY
+          -d db_dumps/prod \
+          -s database-backups \
+          --pattern "prod/*.dump" \
+          --account-name "$AZURE_STORAGE_ACCOUNT" \
+          --account-key "$AZURE_STORAGE_KEY"
+
         
      
     - name: List all dumps
