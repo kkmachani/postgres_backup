@@ -13,7 +13,7 @@ jobs:
       PG_DB_HOST: tr-postgres.postgres.database.azure.com
       PG_DB_USER: kalyan
       PG_DB_PWD: ${{ secrets.PG_DB_PWD }}
-      CONTAINER: database-backups/prod
+      CONTAINER: database-backups
  
     
     steps:
@@ -65,10 +65,10 @@ jobs:
           --account-key $AZURE_STORAGE_KEY \
           -d db_dumps/prod \
           -s "$CONTAINER" \
-          --pattern "*.dump"
+          --pattern "prod/*.dump"
      
     - name: List all dumps
-      run: ls -lh db_dumps/prod/*.dump
+      run: ls -lh db_dumps/prod/
 
     
     
