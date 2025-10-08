@@ -64,10 +64,9 @@ jobs:
         AZURE_STORAGE_KEY=${{ secrets.AZURE_STORAGE_KEY }}
         
         # Downloading Non-Prod Data Dumps
-        mkdir -p db_dumps/prod
         echo "Downloading Non-Prod dumps..."
         az storage blob download-batch \
-          -d  db_dumps/prod \
+          -d  . \
           --pattern "*.dump" \
           -s $CONTAINER \
           --account-name $AZURE_STORAGE_ACCOUNT 
