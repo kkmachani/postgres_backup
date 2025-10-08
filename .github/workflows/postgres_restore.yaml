@@ -8,12 +8,12 @@ jobs:
     runs-on: ubuntu-latest
     env: 
       AZURE_STORAGE_ACCOUNT: pgdbeus2
-      AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+      AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
       BACKUP_DATE: ${{ github.run_id }}
       PG_DB_HOST: tr-postgres.postgres.database.azure.com
       PG_DB_USER: kalyan
       PG_DB_PWD: ${{ secrets.PG_DB_PWD }}
-      CONTAINER: database-backups
+      CONTAINER: database-backups/prod
  
     
     steps:
@@ -59,20 +59,20 @@ jobs:
     # Downloading Dumps from Storage Account
     - name: Downloading DB Dumps from Blob-Storage
       run: |
-        CONTAINER=database-backups
-        AZURE_STORAGE_ACCOUNT=pgdbeus2
-        AZURE_STORAGE_KEY=${{ secrets.AZURE_STORAGE_KEY }}
+        CONTAINER="database-backups/prod"
+        AZURE_STORAGE_ACCOUNT="pgdbeus2"
+        AZURE_STORAGE_CONNECTION_STRING=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
         
         # Downloading Non-Prod Data Dumps
         mkdir -p db_dumps/prod
         echo "Downloading Non-Prod dumps..."
         az storage blob download-batch \
           --account-name $AZURE_STORAGE_ACCOUNT \
-          --account-key $AZURE_STORAGE_KEY \
+          --connection-string $AZURE_STORAGE_CONNECTION_STRING \
           -d db_dumps/prod \
-          --source "database-backups/prod" \
+          --source $CONTAINER \
           --pattern "*.dump"
-          --over-write
+        
      
     - name: List all dumps
       run: ls -lh db_dumps/prod/
