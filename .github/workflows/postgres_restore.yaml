@@ -76,7 +76,7 @@ jobs:
         for dump_file in db_dumps/prod/*.dump; do
           db_name=$(basename "$dump_file" | cut -d'_' -f1)  # removes date suffix
           echo "Checking/creating DB: $db_name"
-          if psql -h $PG_DB_HOST -U $PG_DB_USER -tc "SELECT 1 FROM pg_database WHERE datname = '$db_name';" | grep -q 1 || \
+          if psql -h $PG_DB_HOST -U $PG_DB_USER -tc "SELECT 1 FROM pg_database WHERE datname = '$db_name';" | grep -q 1; then
             echo "Database already exists. Skipping Creation"
           else
             echo "Database '$db_name' not found. Creating..."
