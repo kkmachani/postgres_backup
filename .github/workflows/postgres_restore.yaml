@@ -66,33 +66,37 @@ jobs:
           -d db_dumps/prod \
           -s "$CONTAINER" \
           --pattern "*.dump"
-    
-    
-    # Restore Prod Dumps to Prod DBs
-    - name: Restoring Prod Dumps to Prod DBs
-      env:
-       PG_DB_HOST: tr-postgres.postgres.database.azure.com
-       PG_DB_USER: kalyan
-       PG_DB_PWD: ${{ secrets.PG_DB_PWD }}
-      run: |
-        
-        for dump_file in db_dumps/prod/*.dump; do
-           db_names=$(ls "$dump_file" | sed -E 's/.*\/(.*)_20[0-9]{2}-[0-9]{2}-[0-9]{2}\.dump$//')
-           latest_dump=$(ls db_dumps/prod/${db_name}_*.dump | sort | tail -n1)
-           echo "Processing latest dump for $db_name: $latest_dump"
-          echo "Checking/creating DB: $db_name"
-          if PGPASSWORD=${{ secrets.PG_DB_PWD }} \
-            psql -h $PG_DB_HOST -U $PG_DB_USER -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '$db_name';" | grep -q 1; then
-            echo "Database already exists. Skipping Creation"
-          else
-            echo "Database '$db_name' not found. Creating..."
-            PGPASSWORD=${{ secrets.PG_DB_PWD }} \
-              psql -h $PG_DB_HOST -U $PG_DB_USER -d postgres -c "CREATE DATABASE \"$db_name\";"
-              echo "Database Created Successfully"
-          fi
+     
+    - name: List all dumps
+      run: ls -lh db_dumps/prod/*.dump
 
-          echo "Restoring data from dump: $dump_file ..."
-          PGPASSWORD=${{ secrets.PG_DB_PWD }} \
-            pg_restore -h "$PG_DB_HOST" -U "$PG_DB_USER" -d "$db_name" -c "$latest_dump"
-            echo "Restore completed for $db_name"
-        done
+    
+    
+    # # Restore Prod Dumps to Prod DBs
+    # - name: Restoring Prod Dumps to Prod DBs
+    #   env:
+    #    PG_DB_HOST: tr-postgres.postgres.database.azure.com
+    #    PG_DB_USER: kalyan
+    #    PG_DB_PWD: ${{ secrets.PG_DB_PWD }}
+    #   run: |
+        
+    #     for dump_file in db_dumps/prod/*.dump; do
+    #        db_names=$(ls "$dump_file" | sed -E 's/.*\/(.*)_20[0-9]{2}-[0-9]{2}-[0-9]{2}\.dump$//')
+    #        latest_dump=$(ls db_dumps/prod/${db_name}_*.dump | sort | tail -n1)
+    #        echo "Processing latest dump for $db_name: $latest_dump"
+    #       echo "Checking/creating DB: $db_name"
+    #       if PGPASSWORD=${{ secrets.PG_DB_PWD }} \
+    #         psql -h $PG_DB_HOST -U $PG_DB_USER -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '$db_name';" | grep -q 1; then
+    #         echo "Database already exists. Skipping Creation"
+    #       else
+    #         echo "Database '$db_name' not found. Creating..."
+    #         PGPASSWORD=${{ secrets.PG_DB_PWD }} \
+    #           psql -h $PG_DB_HOST -U $PG_DB_USER -d postgres -c "CREATE DATABASE \"$db_name\";"
+    #           echo "Database Created Successfully"
+    #       fi
+
+    #       echo "Restoring data from dump: $dump_file ..."
+    #       PGPASSWORD=${{ secrets.PG_DB_PWD }} \
+    #         pg_restore -h "$PG_DB_HOST" -U "$PG_DB_USER" -d "$db_name" -c "$latest_dump"
+    #         echo "Restore completed for $db_name"
+    #     done
