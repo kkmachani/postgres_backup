@@ -75,8 +75,10 @@ jobs:
        PG_DB_USER: kalyan
        PG_DB_PWD: ${{ secrets.PG_DB_PWD }}
       run: |
+        db_names=$(ls db_dumps/prod/*.dump | sed -E 's/.*\/(.*)_20[0-9]{2}-[0-9]{2}-[0-9]{2}\.dump$/\1/' | sort -u)
         for dump_file in db_dumps/prod/*.dump; do
-          db_name=$(basename "$dump_file" | cut -d'_' -f1)  # removes date suffix
+           latest_dump=$(ls db_dumps/prod/${db_name}_*.dump | sort | tail -n1)
+           echo "Processing latest dump for $db_name: $latest_dump"
           echo "Checking/creating DB: $db_name"
           if PGPASSWORD=${{ secrets.PG_DB_PWD }} \
             psql -h $PG_DB_HOST -U $PG_DB_USER -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '$db_name';" | grep -q 1; then
