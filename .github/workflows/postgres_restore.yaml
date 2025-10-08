@@ -71,7 +71,7 @@ jobs:
     # Restore Prod Dumps to Prod DBs
     - name: Restoring Prod Dumps to Prod DBs
       env:
-        PGPASSWORD: ${{ secrets.PROD_DB_PWD }}
+        PGPASSWORD: ${{ secrets.PG_DB_PWD }}
       run: |
         for dump_file in db_dumps/prod/*.dump; do
           db_name=$(basename "$dump_file" | cut -d'_' -f1)  # removes date suffix
