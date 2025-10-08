@@ -80,7 +80,7 @@ jobs:
             echo "Database already exists. Skipping Creation"
           else
             echo "Database '$db_name' not found. Creating..."
-            if psql -h $PROD_DB_HOST -U $PG_DB_USER -c "CREATE DATABASE $db_name;" then
+            if psql -h $PROD_DB_HOST -U $PG_DB_USER -c "CREATE DATABASE $db_name;"; then
               echo "Database Created Successfully"
             else
               echo "Failed to create database '$db_name'." >&2
