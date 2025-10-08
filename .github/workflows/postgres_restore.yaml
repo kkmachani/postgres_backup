@@ -52,10 +52,11 @@ jobs:
 
     # Downloading Dumps from Storage Account
     - name: Downloading DB Dumps from Blob-Storage
-      run: |
+      env: 
         CONTAINER: database-backups/prod
         AZURE_STORAGE_ACCOUNT: pgdbeus2
         AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+      run:
         # Downloading Non-Prod Data Dumps
         mkdir -p db_dumps/prod
         echo "Downloading Non-Prod dumps..."
