@@ -60,7 +60,7 @@ jobs:
           --account-name $AZURE_STORAGE_ACCOUNT \
           --account-key $AZURE_STORAGE_KEY \
           -d db_dumps/prod \
-          -s "$CONTAINER_NAME/$BACKUP_DATE" \
+          -s "$CONTAINER_NAME" \
           --pattern "*.dump"
     
     
