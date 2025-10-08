@@ -85,21 +85,13 @@ jobs:
             echo "Database already exists. Skipping Creation"
           else
             echo "Database '$db_name' not found. Creating..."
-            if PGPASSWORD=${{ secrets.PG_DB_PWD }} \
-              psql -h $PG_DB_HOST -U $PG_DB_USER -d postgres -c "CREATE DATABASE $db_name;"; then
+            PGPASSWORD=${{ secrets.PG_DB_PWD }} \
+              psql -h $PG_DB_HOST -U $PG_DB_USER -d postgres -c "CREATE DATABASE \$db_name\";" || exit 1
               echo "Database Created Successfully"
-            else
-              echo "Failed to create database '$db_name'." >&2
-              exit 1
-            fi
           fi
 
           echo "Restoring data from dump: $dump_file ..."
-          if PGPASSWORD=${{ secrets.PG_DB_PWD }} \
-            pg_restore -h "$PG_DB_HOST" -U "$PG_DB_USER" -d "$db_name" -c "$dump_file"; then
+          PGPASSWORD=${{ secrets.PG_DB_PWD }} \
+            pg_restore -h "$PG_DB_HOST" -U "$PG_DB_USER" -d "$db_name" -c "$latest_dump" || exit 1
             echo "Restore completed for $db_name"
-          else
-            echo "Restore failed for $db_name" >&2
-            exit 1
-          fi
         done
