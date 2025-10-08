@@ -12,7 +12,7 @@ jobs:
       BACKUP_DATE: ${{ github.run_id }}
       PG_DB_HOST: tr-postgres.postgres.database.azure.com
       PG_DB_USER: kalyan
-      PG_DB_PWD: ${{ secrets.PROD_DB_PWD }}
+      PG_DB_PWD: ${{ secrets.PG_DB_PWD }}
       CONTAINER: database-backups/prod
  
     
