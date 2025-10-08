@@ -53,7 +53,7 @@ jobs:
     # Downloading Dumps from Storage Account
     - name: Downloading DB Dumps from Blob-Storage
       env: 
-        CONTAINER: database-backups/prod
+        CONTAINER: database-backups
         AZURE_STORAGE_ACCOUNT: pgdbeus2
         AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
       run:
