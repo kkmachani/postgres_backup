@@ -7,15 +7,14 @@ jobs:
   postgres-restore:
     runs-on: ubuntu-latest
     env: 
-      AZURE_STORAGE_ACCOUNT: sapgdbprodeus2
+      AZURE_STORAGE_ACCOUNT: pgdbeus2
+      AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
       BACKUP_DATE: ${{ github.run_id }}
-      NON_PROD_DB_HOST: pg-api-cm-dev-eus2-01.postgres.database.azure.com
-      PROD_DB_HOST: pg-api-cm-prod-eus2-01.postgres.database.azure.com
-      PG_DB_USER: trumio_admin
-      NON_PROD_DB_PWD: ${{ secrets.NON_PROD_DB_PWD }}
-      PROD_DB_PWD: ${{ secrets.PROD_DB_PWD }}
-      NON_PROD_CONTAINER: database-backups/nonprod
-      PROD_CONTAINER: database-backups/prod
+      PG_DB_HOST: tr-postgres.postgres.database.azure.com
+      PG_DB_USER: kalyan
+      PG_DB_PWD: ${{ secrets.PROD_DB_PWD }}
+      CONTAINER: database-backups/prod
+ 
     
     steps:
     - uses: actions/checkout@v4
@@ -55,49 +54,14 @@ jobs:
     - name: Downloading DB Dumps from Blob-Storage
       run: |
         # Downloading Non-Prod Data Dumps
-        mkdir -p db_dumps/non_prod
+        mkdir -p db_dumps/prod
         echo "Downloading Non-Prod dumps..."
         az storage blob download-batch \
-          --account-name $STORAGE_ACCOUNT \
-          --auth-mode login \
-          -d db_dumps/non_prod \
-          -s "$CONTAINER_NAME/nonprod/$BACKUP_DATE" \
+          --account-name $AZURE_STORAGE_ACCOUNT \
+          --account-key $AZURE_STORAGE_KEY \
+          -d db_dumps/prod \
+          -s "$CONTAINER_NAME/$BACKUP_DATE" \
           --pattern "*.dump"
-        
-        # Downloading Prod Data Dumps
-        mkdir -p db_dumps/prod
-        echo "Downloading Prod dumps..."
-        az storage blob download-batch \
-         --account-name $STORAGE_ACCOUNT \
-         --auth-mode login \
-         -d db_dumps/prod \
-         -s "$CONTAINER_NAME/prod/$BACKUP_DATE" \
-         --pattern "*.dump"
-    
-    # Restore Non-Prod Dumps to Non-Prod DBs
-    - name: Restoring Non-Prod Dumps to Non-Prod DBs
-      env:
-        PGPASSWORD: ${{ secrets.NON_PROD_DB_PWD }}
-      run: |
-        for dump_file in db_dumps/non_prod/*.dump; do
-          db_name=$(basename "$dump_file" | cut -d'_' -f1)  # removes date suffix
-         echo "Checking/creating DB: $db_name"
-          if psql -h $NON_PROD_DB_HOST -U $PG_DB_USER -tc "SELECT 1 FROM pg_database WHERE datname = '$db_name';" | grep -q 1 || \
-            echo "Database already exists. Skipping Creation"
-          else
-            echo "Database '$db_name' not found. Creating..."
-            if psql -h $NON_PROD_DB_HOST -U $PG_DB_USER -c "CREATE DATABASE $db_name;" then
-              echo "Database Created Successfully"
-            else
-              echo "Failed to create database '$db_name'." >&2
-            exit 1
-            fi
-          fi
-          
-          echo "Restoring $dump_file into $db_name..."
-          pg_restore -h $NON_PROD_DB_HOST -U $PG_DB_USER -d $db_name -c "$dump_file"
-          echo "$db_name restored successfully!"
-        done
     
     
     # Restore Prod Dumps to Prod DBs
@@ -108,7 +72,7 @@ jobs:
         for dump_file in db_dumps/prod/*.dump; do
           db_name=$(basename "$dump_file" | cut -d'_' -f1)  # removes date suffix
          echo "Checking/creating DB: $db_name"
-          if psql -h $PROD_DB_HOST -U $PG_DB_USER -tc "SELECT 1 FROM pg_database WHERE datname = '$db_name';" | grep -q 1 || \
+          if psql -h $PG_DB_HOST -U $PG_DB_USER -tc "SELECT 1 FROM pg_database WHERE datname = '$db_name';" | grep -q 1 || \
             echo "Database already exists. Skipping Creation"
           else
             echo "Database '$db_name' not found. Creating..."
