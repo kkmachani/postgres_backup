@@ -76,11 +76,11 @@ jobs:
         for dump_file in db_dumps/prod/*.dump; do
           db_name=$(basename "$dump_file" | cut -d'_' -f1)  # removes date suffix
           echo "Checking/creating DB: $db_name"
-          if psql -h $PG_DB_HOST -U $PG_DB_USER -tc "SELECT 1 FROM pg_database WHERE datname = '$db_name';" | grep -q 1; then
+          if psql -h $PG_DB_HOST -U $PG_DB_USER -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '$db_name';" | grep -q 1; then
             echo "Database already exists. Skipping Creation"
           else
             echo "Database '$db_name' not found. Creating..."
-            if psql -h $PROD_DB_HOST -U $PG_DB_USER -c "CREATE DATABASE $db_name;"; then
+            if psql -h $PROD_DB_HOST -U $PG_DB_USER -d postgres -c "CREATE DATABASE $db_name;"; then
               echo "Database Created Successfully"
             else
               echo "Failed to create database '$db_name'." >&2
@@ -88,7 +88,11 @@ jobs:
             fi
           fi
 
-          echo "Restoring $dump_file into $db_name..."
-          pg_restore -h $PROD_DB_HOST -U $PG_DB_USER -d $db_name -c "$dump_file"
-          echo "$db_name restored successfully!"
+          echo "Restoring data from dump: $dump_file ..."
+          if pg_restore -h "$PG_DB_HOST" -U "$PG_DB_USER" -d "$db_name" -c "$dump_file"; then
+            echo "Restore completed for $db_name"
+          else
+            echo "Restore failed for $db_name" >&2
+            exit 1
+          fi
         done
