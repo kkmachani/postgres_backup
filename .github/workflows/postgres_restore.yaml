@@ -21,7 +21,13 @@ jobs:
       with: 
         fetch-depth: 0
         ref: main 
-    
+        
+    - name: Install Postgres tools
+      run: |
+       sudo apt-get update
+       sudo apt-get install -y postgresql-client
+       pg_dump --version
+       
     - name: Install Azure CLI
       run: |
         sudo apt-get install ca-certificates curl apt-transport-https lsb-release gnupg
@@ -52,11 +58,11 @@ jobs:
 
     # Downloading Dumps from Storage Account
     - name: Downloading DB Dumps from Blob-Storage
-      env: 
-        CONTAINER: database-backups
-        AZURE_STORAGE_ACCOUNT: pgdbeus2
-        AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
-      run:
+      run: |
+        CONTAINER=database-backups
+        AZURE_STORAGE_ACCOUNT=pgdbeus2
+        AZURE_STORAGE_KEY=${{ secrets.AZURE_STORAGE_KEY }}
+        
         # Downloading Non-Prod Data Dumps
         mkdir -p db_dumps/prod
         echo "Downloading Non-Prod dumps..."
@@ -64,8 +70,9 @@ jobs:
           --account-name $AZURE_STORAGE_ACCOUNT \
           --account-key $AZURE_STORAGE_KEY \
           -d db_dumps/prod \
-          -s "$CONTAINER" \
-          --pattern "prod/*.dump"
+          --source "database-backups/prod" \
+          --pattern "*.dump"
+          --over-write
      
     - name: List all dumps
       run: ls -lh db_dumps/prod/
