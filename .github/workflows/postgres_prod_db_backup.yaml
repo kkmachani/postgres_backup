@@ -1,0 +1,88 @@
+name: postgres-prod-db-backup
+on:
+ workflow_dispatch:
+
+jobs:
+  postgres-dump:
+    runs-on: ubuntu-latest
+    env: 
+      AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+      # AZURE_STORAGE_KEY: ${{ secrets.AZURE_PROD_STORAGE_KEY }}
+      BACKUP_DATE: ${{ github.run_id }}
+      PG_DB_HOST: ${{ secrets.PG_DB_HOST }}
+      PG_DB_USER: ${{ secrets.PG_DB_USER }}
+      PG_DB_PWD: ${{ secrets.PG_DB_PWD }}
+      CONTAINER_NAME: database-backups/prod
+
+    steps:
+    - uses: actions/checkout@v4
+      with: 
+        fetch-depth: 0
+        ref: main
+
+    - name: Install Postgres tools
+      run: |
+       sudo apt install curl ca-certificates
+       sudo install -d /usr/share/postgresql-common/pgdg
+       sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc
+       . /etc/os-release
+       sudo sh -c "echo 'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $VERSION_CODENAME-pgdg main' > /etc/apt/sources.list.d/pgdg.list"
+       sudo apt update
+       sudo apt install postgresql-18
+       pg_dump --version
+
+    # Dumping all Non-Prod DB Data to Dump Folders
+    - name: Dump Prod Databases
+      env:
+        PGPASSWORD: ${{ secrets.PG_DB_PWD }}
+      run: |
+        BACKUP_DATE=$(date +'%Y-%m-%d')
+        BACKUP_TIME=$(date +'%H:%M:%SZ')
+        mkdir -p db_dumps/prod
+        pg_dbs=("db1" "db2" "db3" "db4")
+        for db in "${pg_dbs[@]}"; do
+          echo "Dumping Prod DB: $db"
+            pg_dump -h $PG_DB_HOST -U $PG_DB_USER -F c $db \
+            > db_dumps/prod/${db}_${BACKUP_DATE}_${BACKUP_TIME}.dump || exit 1
+        done
+       
+    - name: Install Azure CLI
+      run: |
+        sudo apt-get install ca-certificates curl apt-transport-https lsb-release gnupg
+        curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg > /dev/null
+        AZ_REPO=$(lsb_release -cs)
+        echo "deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main" | sudo tee /etc/apt/sources.list.d/azure-cli.list
+        sudo apt-get update
+        sudo apt-get install -y azure-cli
+
+    - name: Set Azure environment
+      id: azure
+      run: |
+        echo "azure_clientid=${{ secrets.AZURE_CLIENT_ID }}" >> $GITHUB_ENV
+        echo "azure_tenantid=${{ secrets.AZURE_TENANT_ID }}" >> $GITHUB_ENV
+        echo "azure_subscriptionid=${{ secrets.AZURE_SUBSCRIPTION_ID }}" >> $GITHUB_ENV
+        echo "azure_clientsecret=${{ secrets.AZURE_CLIENT_SECRET }}" >> $GITHUB_ENV
+      
+
+    - name: Login to Azure
+      uses: azure/login@v2
+      with:
+        creds: '{"clientId":"${{ env.azure_clientid }}","clientSecret":"${{ env.azure_clientsecret }}","subscriptionId":"${{ env.azure_subscriptionid }}","tenantId":"${{ env.azure_tenantid }}"}'
+    
+
+    - name: Upload to blob storage
+      run: |
+        BACKUP_DATE=$(date +'%Y-%m-%d')
+        CONTAINER_NAME="database-backups/prod"
+
+         echo "Uploading all .dumps files to blob storage..."
+  
+         az storage blob upload-batch \
+         --account-name ${{ env.AZURE_STORAGE_ACCOUNT }} \
+         --auth-mode login \
+         -d "$CONTAINER_NAME/$BACKUP_DATE" \
+         --source "db_dumps/prod" \
+         --pattern "*.dump" \
+         --overwrite
+
+         echo "Upload Completed..."
