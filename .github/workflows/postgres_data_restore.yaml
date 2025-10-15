@@ -1,0 +1,180 @@
+name: postgres-data-restore
+
+on:
+  workflow_dispatch:
+    inputs:
+      container: 
+        description: 'Container'
+        required: true
+        type: string
+        default: database-backups
+
+      container_path:
+        description: 'Select Container Path'
+        required: true
+        type: choice
+        options: 
+          - nonprod
+          - prod
+     
+      postgres_host:
+        description: 'Select Postgres Host'
+        required: true
+        type: string
+        default: " "
+        
+          
+jobs:
+  postgres-restore:
+    runs-on: ubuntu-latest
+    env: 
+      AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+      PG_USER: ${{ secrets.PG_USER }}
+      
+    steps:
+    - uses: actions/checkout@v4
+      with: 
+        fetch-depth: 0
+        ref: main 
+    
+    - name: Install Postgres tools
+      run: |
+       sudo apt-get update
+       sudo apt-get install -y postgresql-client
+       pg_dump --version
+
+    
+    - name: Install Azure CLI
+      run: |
+        sudo apt-get install ca-certificates curl apt-transport-https lsb-release gnupg
+        curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg > /dev/null
+        AZ_REPO=$(lsb_release -cs)
+        echo "deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main" | sudo tee /etc/apt/sources.list.d/azure-cli.list
+        sudo apt-get update
+        sudo apt-get install -y azure-cli
+
+    - name: Set Azure environment
+      id: azure
+      run: |
+          echo "azure_clientid=${{ secrets.AZURE_CLIENT_ID }}" >> $GITHUB_ENV
+          echo "azure_tenantid=${{ secrets.AZURE_TENANT_ID }}" >> $GITHUB_ENV
+          echo "azure_subscriptionid=${{ secrets.AZURE_SUBSCRIPTION_ID }}" >> $GITHUB_ENV
+          echo "azure_clientsecret=${{ secrets.AZURE_CLIENT_SECRET }}" >> $GITHUB_ENV
+  
+    - name: Login to Azure
+      uses: azure/login@v2
+      with:
+        creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
+
+    - name: Download latest DB Dumps from Blob-Storage
+      run: |
+        set -e
+        CONTAINER="${{ github.event.inputs.container }}"
+        CONTAINER_PATH="${{ github.event.inputs.container_path }}"
+        LOCAL_DIR="db_dumps/$(basename $CONTAINER)"
+        mkdir -p "$LOCAL_DIR"
+        echo "LOCAL_DIR=$LOCAL_DIR" >> $GITHUB_ENV
+        echo "Detecting latest backup date folder in $CONTAINER/$CONTAINER_PATH ..."
+
+        # List all blobs ending with .dump
+        blobs=$(az storage blob list \
+          --account-name ${{ env.AZURE_STORAGE_ACCOUNT }} \
+          --container-name "$CONTAINER" \
+          --prefix "$CONTAINER_PATH/" \
+          --auth-mode login \
+          --query "[?ends_with(name, '.dump')].name" -o tsv)
+
+        if [ -z "$blobs" ]; then
+          echo "No dump files found in $CONTAINER/$CONTAINER_PATH"
+          exit 1
+        fi
+
+        # Extract backup dates and pick the latest
+        backup_dates=$(echo "$blobs" | awk -F'/' '{print $2}' | sort -r | uniq)
+        BACKUP_DATE=$(echo "$backup_dates" | head -n1)
+        echo "Latest backup date detected: $BACKUP_DATE"
+
+        # Filter blobs for latest backup date
+        latest_blobs=$(echo "$blobs" | grep "/$BACKUP_DATE/")
+
+        # Extract unique DB names
+        db_names=$(echo "$latest_blobs" | sed -E 's|.*/||' | sed -E 's/_[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}:[0-9]{2}:[0-9]{2}Z\.dump$//' | sort -u)
+
+        # Download latest dump per DB
+        for db in $db_names; do
+          latest_blob=$(echo "$latest_blobs" | grep "/$BACKUP_DATE/$db" | sort | tail -n1)
+          echo "Downloading latest dump for DB $db: $latest_blob"
+          az storage blob download \
+            --account-name ${{ env.AZURE_STORAGE_ACCOUNT }} \
+            --auth-mode login \
+            --container-name "$CONTAINER" \
+            --name "$latest_blob" \
+            --file "$LOCAL_DIR/$(basename $latest_blob)"
+        done
+
+    - name: List all Dumps in Runner
+      run: |
+        echo "Downloaded dumps in runner directory $LOCAL_DIR:"
+        find "$LOCAL_DIR" -type f -name "*.dump" | sort
+
+    - name: Set PG Password Based on Container Path
+      run: |
+        if [[ "${{ github.event.inputs.container_path }}" == "prod" ]]; then
+            echo "Using PROD password"
+            echo "PGPASSWORD=${{ secrets.PROD_DB_PWD }}" >> $GITHUB_ENV
+        else
+            echo "Using NON-PROD password"
+            echo "PGPASSWORD=${{ secrets.NON_PROD_DB_PWD }}" >> $GITHUB_ENV
+        fi
+
+    - name: Restore latest DB Dumps to PostgreSQL
+      env:
+          PG_HOST: ${{ github.event.inputs.postgres_host }}
+          PG_USER: trumio_admin
+          PGPASSWORD: ${{ env.PGPASSWORD }}
+      run: |
+          set -e
+          set -o pipefail
+
+          LOCAL_DIR="db_dumps/$(basename ${{ github.event.inputs.container }})"
+          echo "Starting restore of dumps from $LOCAL_DIR to PostgreSQL host $PG_HOST ..."
+
+          for dump_file in "$LOCAL_DIR"/*.dump; do
+              # Extract DB name (remove timestamp)
+              db_name=$(basename "$dump_file" | sed -E 's/_[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}:[0-9]{2}:[0-9]{2}Z\.dump$//')
+              echo "Processing DB: $db_name"
+
+              # Check if DB exists
+              exists=$(psql -h "$PG_HOST" -U "$PG_USER" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$db_name';")
+              CLEAN_OPTION=()
+
+              if [ "$exists" != "1" ]; then
+                  echo "Database $db_name does not exist. Creating..."
+                  psql -h "$PG_HOST" -U "$PG_USER" -d postgres -c "CREATE DATABASE \"$db_name\";"
+
+                  echo "Granting all privileges on new database $db_name to trumio_user..."
+                  psql -h "$PG_HOST" -U "$PG_USER" -d postgres -c "GRANT ALL PRIVILEGES ON DATABASE \"$db_name\" TO \"$PG_USER\";"
+
+                  echo "Granting schema permissions on 'public' to $PG_USER..."
+                  psql -h "$PG_HOST" -U "$PG_USER" -d postgres -c "GRANT USAGE ON SCHEMA public TO \"$PG_USER\";"
+                  psql -h "$PG_HOST" -U "$PG_USER" -d postgres -c "GRANT CREATE ON SCHEMA public TO \"$PG_USER\";"
+
+              else
+                 # Check if DB contains any user tables
+                 table_count=$(psql -h "$PG_HOST" -U "$PG_USER" -d "$db_name" -tAc \
+                  "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';")
+              
+                 if [ "$table_count" -gt 0 ]; then
+                    echo "Database $db_name has existing data. Using --clean for restore."
+                    CLEAN_OPTION=(--clean --if-exists)
+                 else
+                    echo "Database $db_name exists but is empty. Skipping --clean."
+                 fi
+              fi
+
+            # Restore dump
+            echo "Restoration for $db_name is in progress...."
+            pg_restore -h "$PG_HOST" -U "$PG_USER" -d "$db_name" "${CLEAN_OPTION[@]}" --no-owner --no-privileges -F c "$dump_file"
+
+            echo "Restore completed for $db_name."
+          done
