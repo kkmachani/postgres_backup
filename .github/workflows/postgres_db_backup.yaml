@@ -1,4 +1,4 @@
-name: postgres-prod-db-backup
+name: postgres-db-backup
 on:
  workflow_dispatch:
 
